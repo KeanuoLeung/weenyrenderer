@@ -88,15 +88,6 @@ bool TGAImage::read_tga_file(const char *filename)
       return false;
     }
   }
-  else if (10 == header.datatypecode || 11 == header.datatypecode)
-  {
-    if (!load_rle_data(in))
-    {
-      in.close();
-      std::cerr << "an error occured while reading the data\n";
-      return false;
-    }
-  }
   else
   {
     in.close();
@@ -116,68 +107,7 @@ bool TGAImage::read_tga_file(const char *filename)
   return true;
 }
 
-bool TGAImage::load_rle_data(std::ifstream &in)
-{
-  unsigned long pixelcount = width * height;
-  unsigned long currentpixel = 0;
-  unsigned long currentbyte = 0;
-  TGAColor colorbuffer;
-  do
-  {
-    unsigned char chunkheader = 0;
-    chunkheader = in.get();
-    if (!in.good())
-    {
-      std::cerr << "an error occured while reading the data\n";
-      return false;
-    }
-    if (chunkheader < 128)
-    {
-      chunkheader++;
-      for (int i = 0; i < chunkheader; i++)
-      {
-        in.read((char *)colorbuffer.raw, bytespp);
-        if (!in.good())
-        {
-          std::cerr << "an error occured while reading the header\n";
-          return false;
-        }
-        for (int t = 0; t < bytespp; t++)
-          data[currentbyte++] = colorbuffer.raw[t];
-        currentpixel++;
-        if (currentpixel > pixelcount)
-        {
-          std::cerr << "Too many pixels read\n";
-          return false;
-        }
-      }
-    }
-    else
-    {
-      chunkheader -= 127;
-      in.read((char *)colorbuffer.raw, bytespp);
-      if (!in.good())
-      {
-        std::cerr << "an error occured while reading the header\n";
-        return false;
-      }
-      for (int i = 0; i < chunkheader; i++)
-      {
-        for (int t = 0; t < bytespp; t++)
-          data[currentbyte++] = colorbuffer.raw[t];
-        currentpixel++;
-        if (currentpixel > pixelcount)
-        {
-          std::cerr << "Too many pixels read\n";
-          return false;
-        }
-      }
-    }
-  } while (currentpixel < pixelcount);
-  return true;
-}
-
-bool TGAImage::write_tga_file(const char *filename, bool rle)
+bool TGAImage::write_tga_file(const char *filename)
 {
   unsigned char developer_area_ref[4] = {0, 0, 0, 0};
   unsigned char extension_area_ref[4] = {0, 0, 0, 0};
@@ -195,7 +125,7 @@ bool TGAImage::write_tga_file(const char *filename, bool rle)
   header.bitsperpixel = bytespp << 3;
   header.width = width;
   header.height = height;
-  header.datatypecode = (bytespp == GRAYSCALE ? (rle ? 11 : 3) : (rle ? 10 : 2));
+  header.datatypecode = (bytespp == GRAYSCALE ? 3 : 2);
   header.imagedescriptor = 0x20; // top-left origin
   out.write((char *)&header, sizeof(header));
   if (!out.good())
@@ -204,25 +134,15 @@ bool TGAImage::write_tga_file(const char *filename, bool rle)
     std::cerr << "cant't dump the tga file\n";
     return false;
   }
-  if (!rle)
+
+  out.write((char *)data, width * height * bytespp);
+  if (!out.good())
   {
-    out.write((char *)data, width * height * bytespp);
-    if (!out.good())
-    {
-      std::cerr << "can't unload raw data\n";
-      out.close();
-      return false;
-    }
+    std::cerr << "can't unload raw data\n";
+    out.close();
+    return false;
   }
-  else
-  {
-    if (!unload_rle_data(out))
-    {
-      out.close();
-      std::cerr << "can't unload rle data\n";
-      return false;
-    }
-  }
+
   out.write((char *)developer_area_ref, sizeof(developer_area_ref));
   if (!out.good())
   {
@@ -245,58 +165,6 @@ bool TGAImage::write_tga_file(const char *filename, bool rle)
     return false;
   }
   out.close();
-  return true;
-}
-
-// TODO: it is not necessary to break a raw chunk for two equal pixels (for the matter of the resulting size)
-bool TGAImage::unload_rle_data(std::ofstream &out)
-{
-  const unsigned char max_chunk_length = 128;
-  unsigned long npixels = width * height;
-  unsigned long curpix = 0;
-  while (curpix < npixels)
-  {
-    unsigned long chunkstart = curpix * bytespp;
-    unsigned long curbyte = curpix * bytespp;
-    unsigned char run_length = 1;
-    bool raw = true;
-    while (curpix + run_length < npixels && run_length < max_chunk_length)
-    {
-      bool succ_eq = true;
-      for (int t = 0; succ_eq && t < bytespp; t++)
-      {
-        succ_eq = (data[curbyte + t] == data[curbyte * t + bytespp]);
-      }
-      curbyte += bytespp;
-      if (1 == run_length)
-      {
-        raw = !succ_eq;
-      }
-      if (raw && succ_eq)
-      {
-        run_length--;
-        break;
-      }
-      if (!raw && !succ_eq)
-      {
-        break;
-      }
-      run_length++;
-    }
-    curpix += run_length;
-    out.put(raw ? run_length - 1 : run_length + 127);
-    if (!out.good())
-    {
-      std::cerr << "can't dump the tga file\n";
-      return false;
-    }
-    out.write((char *)(data + chunkstart), (raw ? run_length * bytespp : bytespp));
-    if (!out.good())
-    {
-      std::cerr << "cant't dump the tga file\n";
-      return false;
-    }
-  }
   return true;
 }
 
