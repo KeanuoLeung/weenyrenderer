@@ -1,88 +1,82 @@
-// #define _KEANUO_DEBUGING__
+#include <vector>
+#include <cmath>
 #include "tgaimage.h"
-#include "tinymath.h"
+#include "model.h"
+#include "geometry.h"
 
 const TGAColor white = TGAColor(255, 255, 255, 255);
 const TGAColor red = TGAColor(255, 0, 0, 255);
+Model *model = NULL;
+const int width = 800;
+const int height = 800;
 
-void line(TGAImage &img, int x0, int y0, int x1, int y1, TGAColor color)
+void line(int x0, int y0, int x1, int y1, TGAImage &img, TGAColor color)
 {
-  // slope = rise / run = (y2 - y1) / (x2 - x1)
-  float slope = calc_slope(x0, y0, x1, y1);
   bool steep = false;
-  if (slope > 1)
+  if (std::abs(x0 - x1) < std::abs(y0 - y1))
   {
     std::swap(x0, y0);
     std::swap(x1, y1);
     steep = true;
-    slope = calc_slope(x0, y0, x1, y1);
   }
-  // make it right order
   if (x0 > x1)
   {
     std::swap(x0, x1);
     std::swap(y0, y1);
   }
-  // draw the line in loop of points
-  for (int x = x0; x < x1; ++x)
+  int dx = x1 - x0;
+  int dy = y1 - y0;
+  int derror2 = std::abs(dy) * 2;
+  int error2 = 0;
+  int y = y0;
+  for (int x = x0; x <= x1; x++)
   {
-    int y = slope * (x - x0) + y0;
     if (steep)
+    {
       img.set(y, x, color);
+    }
     else
+    {
       img.set(x, y, color);
-  }
-}
-
-void triangle(TGAImage &img, int x0, int y0, int x1, int y1, int x2, int y2, TGAColor color)
-{
-  // sort the points base on their's y bottom to top
-  if (y0 > y1)
-  {
-    std::swap(x0, x1);
-    std::swap(y0, y1);
-  }
-  if (y0 > y2)
-  {
-    std::swap(x0, x2);
-    std::swap(y0, y2);
-  }
-  if (y1 > y2)
-  {
-    std::swap(x1, x2);
-    std::swap(y1, y2);
-  }
-  printf("y0: %d, y1: %d, y2: %d\n", y0, y1, y2);
-  line(img, x0, y0, x1, y1, color);
-  line(img, x1, y1, x2, y2, color);
-  line(img, x2, y2, x0, y0, color);
-  int total_level = y2 - y0;
-  printf("total level: %d\n", total_level);
-
-  // draw lower triangle
-  {
-    int y3 = y1;
-    float slope = calc_slope(x2, y2, x0, y0);
-    // y = kx + b
-    // b = y - kx
-    // x = (y - b) / k
-    float b = (float)y0 - slope * x0;
-    int x3 = (y3 - b) / slope;
-    printf("this is b: %.2f\nthis is slope: %.2f\n", b, slope);
-    printf("lines %d %d %d %d", x0, y0, x2, y2);
-    printf("x3 x: %d, y: %d\n", x3, y3);
-    line(img, x3, y3, x1, y1, white);
+    }
+    error2 += derror2;
+    if (error2 > dx)
+    {
+      y += (y1 > y0 ? 1 : -1);
+      error2 -= dx * 2;
+    }
   }
 }
 
 int main(int argc, char *argv[])
 {
-  TGAImage image(100, 100, TGAImage::RGB);
-  image.set(52, 41, red);
-  // line(image, 10, 10, 90, 30, white);
-  // line(image, 10, 10, 30, 90, red);
-  triangle(image, 70, 70, 10, 10, 70, 30, red);
-  image.flip_vertically();
+  if (2 == argc)
+  {
+    model = new Model(argv[1]);
+  }
+  else
+  {
+    model = new Model("obj/african_head.obj");
+  }
+
+  TGAImage image(width, height, TGAImage::RGB);
+  for (int i = 0; i < model->nfaces(); i++)
+  {
+    std::vector<int> face = model->face(i);
+    for (int j = 0; j < 3; j++)
+    {
+      Vec3f v0 = model->vert(face[j]);
+      Vec3f v1 = model->vert(face[(j + 1) % 3]);
+      int x0 = (v0.x + 1.) * width / 2.;
+      int y0 = (v0.y + 1.) * height / 2.;
+      int x1 = (v1.x + 1.) * width / 2.;
+      int y1 = (v1.y + 1.) * height / 2.;
+      line(x0, y0, x1, y1, image, white);
+    }
+  }
+
+  image.flip_vertically(); // i want to have the origin at the left bottom corner of the image
   image.write_tga_file("output.tga");
+  delete model;
   return 0;
 }

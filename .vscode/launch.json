@@ -6,7 +6,7 @@
   "configurations": [
     {
       "name": "clang++ - 生成和调试活动文件",
-      "type": "cppdbg",
+      "type": "lldb",
       "request": "launch",
       "program": "${workspaceFolder}/main",
       "args": [],
